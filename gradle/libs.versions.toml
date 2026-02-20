@@ -19,6 +19,7 @@
 
 [versions]
 checkstyle = "13.3.0"
+antlr4 = "4.13.2"
 hadoop = "3.4.3"
 iceberg = "1.10.1" # Ensure to update the iceberg version in regtests and getting-started to keep them up-to-date
 immutables = "2.12.1"
@@ -38,6 +39,8 @@ swagger = "1.6.16"
 #
 agrona = { module = "org.agrona:agrona", version = "2.4.0" }
 antlr4-runtime = { module = "org.antlr:antlr4-runtime", version.strictly = "4.9.3" } # spark integration tests
+antlr4 = { module = "org.antlr:antlr4", version.ref = "antlr4" }
+antlr4-engine-runtime = { module = "org.antlr:antlr4-runtime", version.ref = "antlr4" }
 apache-httpclient5 = { module = "org.apache.httpcomponents.client5:httpclient5", version = "5.6" }
 assertj-core = { module = "org.assertj:assertj-core", version = "3.27.7" }
 auth0-jwt = { module = "com.auth0:java-jwt", version = "4.5.1" }
@@ -105,6 +108,7 @@ weld-junit5 = { module = "org.jboss.weld:weld-junit5", version = "5.0.3.Final" }
 weld-core-bom = { module = "org.jboss.weld:weld-core-bom", version = "6.0.4.Final" }
 
 [plugins]
+antlr4 = { id = "antlr", version = "antlr4" }
 jcstress = { id = "io.github.reyerizo.gradle.jcstress", version = "0.9.0" }
 jetbrains-changelog = { id = "org.jetbrains.changelog",  version = "2.5.0" }
 jmh = { id = "me.champeau.jmh", version = "0.7.3" }
