@@ -58,10 +58,6 @@ sourceSets {
     }
 }
 
-tasks.named<JavaCompile>("compileJava") {
-    dependsOn(generateGrammarSource)
-}
-
 dependencies {
     antlrTool(libs.antlr4)                      // ANTLR 4 tool — code-gen only, not shipped
     implementation(libs.antlr4.engine.runtime)  // ANTLR 4 runtime — shipped in our jar
