@@ -22,12 +22,45 @@ grammar IcebergSQL;
 // ─── Entry Point ─────────────────────────────────────────────────────────────
 
 query
-    : SELECT columnList
-      FROM tableRef
-      (WHERE predicate)?
-      (LIMIT INTEGER_LITERAL)?
-      EOF
+    : selectQuery   # selectStmt
+    | showTablesQuery # showTablesStmt
+    | describeStatsQuery # describeStatsStmt
+    | showLocationQuery # showLocationStmt
+    | showPoliciesQuery # showPoliciesStmt
+    | diagnoseQuery # diagnoseStmt
     ;
+
+selectQuery
+  : SELECT columnList
+    FROM tableRef
+    (WHERE predicate)?
+    (LIMIT INTEGER_LITERAL)?
+    EOF
+  ;
+
+showTablesQuery
+  : SHOW TABLES IN namespaceRef EOF
+  ;
+
+describeStatsQuery
+  : DESCRIBE STATS tableRef EOF
+  ;
+
+showLocationQuery
+  : SHOW LOCATION tableRef EOF
+  ;
+
+showPoliciesQuery
+  : SHOW POLICIES tableRef EOF
+  ;
+
+diagnoseQuery
+  : DIAGNOSE TABLE tableRef EOF
+  ;
+
+namespaceRef
+  : ID (DOT ID)*
+  ;
 
 // ─── Column Projection ───────────────────────────────────────────────────────
 
@@ -85,19 +118,27 @@ op  : EQ | NEQ | LT | LTE | GT | GTE ;
 
 // ─── Keywords (case-insensitive via fragment) ─────────────────────────────────
 
-SELECT  : S E L E C T ;
-FROM    : F R O M ;
-WHERE   : W H E R E ;
-LIMIT   : L I M I T ;
-AND     : A N D ;
-OR      : O R ;
-NOT     : N O T ;
-IN      : I N ;
-IS      : I S ;
-AS      : A S ;
-NULL    : N U L L ;
-TRUE    : T R U E ;
-FALSE   : F A L S E ;
+SELECT   : S E L E C T ;
+FROM     : F R O M ;
+WHERE    : W H E R E ;
+LIMIT    : L I M I T ;
+AND      : A N D ;
+OR       : O R ;
+NOT      : N O T ;
+IN       : I N ;
+IS       : I S ;
+AS       : A S ;
+NULL     : N U L L ;
+TRUE     : T R U E ;
+FALSE    : F A L S E ;
+SHOW     : S H O W ;
+TABLES   : T A B L E S ;
+TABLE    : T A B L E ;
+DESCRIBE : D E S C R I B E ;
+STATS    : S T A T S ;
+LOCATION : L O C A T I O N ;
+POLICIES : P O L I C I E S ;
+DIAGNOSE : D I A G N O S E ;
 
 // ─── Operators & Punctuation ─────────────────────────────────────────────────
 
