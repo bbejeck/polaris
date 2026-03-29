@@ -30,9 +30,8 @@ import java.util.List;
 import java.util.OptionalLong;
 
 /**
- * User: Bill Bejeck
- * Date: 2/21/26
- * Time: 1:05 PM
+ * Translates a SQL string into a {@link QueryPlan} by parsing it with the IcebergSQL ANTLR grammar
+ * and dispatching each statement type to the corresponding plan record.
  */
 public class SqlToQueryPlan {
 
@@ -43,22 +42,42 @@ public class SqlToQueryPlan {
 
         IcebergSQLParser.QueryContext queryCtx = parser.query();
 
-        String table = queryCtx.tableRef().getText();
-        
+        return switch (queryCtx) {
+            case IcebergSQLParser.SelectStmtContext ctx ->
+                    translateSelect(ctx.selectQuery());
+            case IcebergSQLParser.ShowTablesStmtContext ctx ->
+                    new QueryPlan.ShowTables(ctx.showTablesQuery().namespaceRef().getText());
+            case IcebergSQLParser.DescribeStatsStmtContext ctx ->
+                    new QueryPlan.DescribeStats(ctx.describeStatsQuery().tableRef().getText());
+            case IcebergSQLParser.ShowLocationStmtContext ctx ->
+                    new QueryPlan.ShowLocation(ctx.showLocationQuery().tableRef().getText());
+            case IcebergSQLParser.ShowPoliciesStmtContext ctx ->
+                    new QueryPlan.ShowPolicies(ctx.showPoliciesQuery().tableRef().getText());
+            case IcebergSQLParser.DiagnoseStmtContext ctx ->
+                    new QueryPlan.Diagnose(ctx.diagnoseQuery().tableRef().getText());
+            default -> throw new IllegalArgumentException("Unrecognized statement: " + sql);
+        };
+    }
+
+    private QueryPlan.Select translateSelect(IcebergSQLParser.SelectQueryContext ctx) {
+        String table = ctx.tableRef().getText();
+
         List<String> columns = new ArrayList<>();
-        if (queryCtx.columnList() instanceof IcebergSQLParser.NamedColumnsContext columnListCtx) {
-            columns = new ArrayList<>(columnListCtx.column().stream().map(IcebergSQLParser.ColumnContext::getText).toList());
+        if (ctx.columnList() instanceof IcebergSQLParser.NamedColumnsContext columnListCtx) {
+            columns = new ArrayList<>(columnListCtx.column().stream()
+                    .map(IcebergSQLParser.ColumnContext::getText).toList());
         }
+
         Expression filter = null;
-        if (queryCtx.predicate() != null) {
-            filter = new IcebergExpressionVisitor().visit(queryCtx.predicate());
+        if (ctx.predicate() != null) {
+            filter = new IcebergExpressionVisitor().visit(ctx.predicate());
         }
 
         OptionalLong limit = OptionalLong.empty();
-        if (queryCtx.INTEGER_LITERAL() != null) {
-            limit = OptionalLong.of(Long.parseLong(queryCtx.INTEGER_LITERAL().getText()));
+        if (ctx.INTEGER_LITERAL() != null) {
+            limit = OptionalLong.of(Long.parseLong(ctx.INTEGER_LITERAL().getText()));
         }
-        
-        return new QueryPlan(table, columns, filter, limit);
+
+        return new QueryPlan.Select(table, columns, filter, limit);
     }
 }

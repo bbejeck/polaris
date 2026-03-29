@@ -27,9 +27,8 @@ import org.apache.polaris.sql.grammar.IcebergSQLParser;
 import java.util.List;
 
 /**
- * User: Bill Bejeck
- * Date: 2/21/26
- * Time: 9:41 AM
+ * ANTLR visitor that converts parsed SQL predicate nodes into Iceberg {@link Expression}
+ * objects, supporting AND, OR, NOT, comparisons, IN, NOT IN, and IS NULL predicates.
  */
 public class IcebergExpressionVisitor extends IcebergSQLBaseVisitor<Expression> {
     @Override
