@@ -47,11 +47,11 @@ describeStatsQuery
   ;
 
 showLocationQuery
-  : SHOW LOCATION tableRef EOF
+  : SHOW TABLE LOCATION tableRef EOF
   ;
 
 showPoliciesQuery
-  : SHOW POLICIES tableRef EOF
+  : SHOW TABLE POLICIES tableRef EOF
   ;
 
 diagnoseQuery

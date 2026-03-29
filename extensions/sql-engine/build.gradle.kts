@@ -66,8 +66,22 @@ dependencies {
     implementation("org.apache.iceberg:iceberg-api")
     implementation("org.apache.iceberg:iceberg-core")
     implementation("org.apache.iceberg:iceberg-data")
+    implementation("org.apache.iceberg:iceberg-parquet")
 
     implementation(project(":polaris-core"))
     implementation(libs.guava)
     implementation(libs.slf4j.api)
+
+    testImplementation(libs.mockito.junit.jupiter)
+
+    testImplementation("org.apache.iceberg:iceberg-aws")
+    testImplementation("org.apache.parquet:parquet-column:1.16.0")
+    testImplementation(libs.hadoop.common)
+    testImplementation(libs.hadoop.client.runtime)
+
+    testImplementation(platform(libs.testcontainers.bom))
+    testImplementation("org.testcontainers:testcontainers")
+    testImplementation("org.testcontainers:testcontainers-junit-jupiter")
+
+    testImplementation(project(":polaris-minio-testcontainer"))
 }

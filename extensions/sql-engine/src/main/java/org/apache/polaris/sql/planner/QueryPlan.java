@@ -25,16 +25,32 @@ import java.util.List;
 import java.util.OptionalLong;
 
 /**
- * User: Bill Bejeck
- * Date: 2/21/26
- * Time: 9:36 AM
+ * Sealed interface representing the output of SQL-to-plan translation.
+ * Each permitted record type corresponds to one supported statement:
+ * SELECT queries, SHOW TABLES, DESCRIBE STATS, SHOW LOCATION, SHOW POLICIES, and DIAGNOSE.
  */
-public record QueryPlan (
-        String namespacedTable,
-        List<String> projectedColumns,
-        Expression filter,
-        OptionalLong limit
-) {}
+public sealed interface QueryPlan
+        permits QueryPlan.Select,
+                QueryPlan.ShowTables,
+                QueryPlan.DescribeStats,
+                QueryPlan.ShowLocation,
+                QueryPlan.ShowPolicies,
+                QueryPlan.Diagnose {
 
-    
+    record Select(
+            String namespacedTable,
+            List<String> projectedColumns,
+            Expression filter,
+            OptionalLong limit
+    ) implements QueryPlan {}
 
+    record ShowTables(String namespace) implements QueryPlan {}
+
+    record DescribeStats(String namespacedTable) implements QueryPlan {}
+
+    record ShowLocation(String namespacedTable) implements QueryPlan {}
+
+    record ShowPolicies(String namespacedTable) implements QueryPlan {}
+
+    record Diagnose(String namespacedTable) implements QueryPlan {}
+}
