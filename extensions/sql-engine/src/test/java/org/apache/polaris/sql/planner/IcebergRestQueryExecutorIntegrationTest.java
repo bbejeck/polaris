@@ -182,6 +182,9 @@ class IcebergRestQueryExecutorIntegrationTest {
             assertThat(rows).hasSize(2);
             assertThat(rows).extracting(r -> r.getField("name"))
                     .containsExactlyInAnyOrder("Alice", "Carol");
+            // Verify the predicate actually filtered on value, not just row count
+            assertThat(rows).extracting(r -> r.getField("value"))
+                    .allSatisfy(v -> assertThat((Double) v).isGreaterThan(50.0));
         }
     }
 

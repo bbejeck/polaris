@@ -116,6 +116,12 @@ class SqlToQueryPlanTest {
     }
 
     @Test
+    void emptyStringThrows() {
+        assertThatThrownBy(() -> translator.translate(""))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void selectWithAndPredicate() {
         QueryPlan plan = translator.translate(
                 "SELECT id FROM ns.tbl WHERE id > 0 AND id < 100");
@@ -124,5 +130,108 @@ class SqlToQueryPlanTest {
         QueryPlan.Select select = (QueryPlan.Select) plan;
         assertThat(select.filter()).isNotNull();
         assertThat(select.filter().op()).isEqualTo(Expression.Operation.AND);
+    }
+
+    @Test
+    void selectWithOrPredicate() {
+        QueryPlan.Select select = (QueryPlan.Select) translator.translate(
+                "SELECT id FROM ns.tbl WHERE id < 0 OR id > 100");
+        assertThat(select.filter().op()).isEqualTo(Expression.Operation.OR);
+    }
+
+    @Test
+    void selectWithNotPredicate() {
+        QueryPlan.Select select = (QueryPlan.Select) translator.translate(
+                "SELECT id FROM ns.tbl WHERE NOT id = 5");
+        assertThat(select.filter().op()).isEqualTo(Expression.Operation.NOT);
+    }
+
+    @Test
+    void selectWithInPredicate() {
+        QueryPlan.Select select = (QueryPlan.Select) translator.translate(
+                "SELECT id FROM ns.tbl WHERE region IN ('us-east-1', 'eu-west-1')");
+        assertThat(select.filter().op()).isEqualTo(Expression.Operation.IN);
+    }
+
+    @Test
+    void selectWithNotInPredicate() {
+        QueryPlan.Select select = (QueryPlan.Select) translator.translate(
+                "SELECT id FROM ns.tbl WHERE region NOT IN ('us-east-1')");
+        assertThat(select.filter().op()).isEqualTo(Expression.Operation.NOT_IN);
+    }
+
+    @Test
+    void selectWithIsNullPredicate() {
+        QueryPlan.Select select = (QueryPlan.Select) translator.translate(
+                "SELECT id FROM ns.tbl WHERE region IS NULL");
+        assertThat(select.filter().op()).isEqualTo(Expression.Operation.IS_NULL);
+    }
+
+    @Test
+    void selectWithIsNotNullPredicate() {
+        QueryPlan.Select select = (QueryPlan.Select) translator.translate(
+                "SELECT id FROM ns.tbl WHERE region IS NOT NULL");
+        assertThat(select.filter().op()).isEqualTo(Expression.Operation.NOT_NULL);
+    }
+
+    @Test
+    void selectWithAllComparisonOperators() {
+        assertThat(filterOp("SELECT id FROM ns.t WHERE id < 10")).isEqualTo(Expression.Operation.LT);
+        assertThat(filterOp("SELECT id FROM ns.t WHERE id <= 10")).isEqualTo(Expression.Operation.LT_EQ);
+        assertThat(filterOp("SELECT id FROM ns.t WHERE id >= 10")).isEqualTo(Expression.Operation.GT_EQ);
+        assertThat(filterOp("SELECT id FROM ns.t WHERE id != 10")).isEqualTo(Expression.Operation.NOT_EQ);
+        assertThat(filterOp("SELECT id FROM ns.t WHERE id = 10")).isEqualTo(Expression.Operation.EQ);
+    }
+
+    @Test
+    void selectWithNestedParentheses() {
+        QueryPlan.Select select = (QueryPlan.Select) translator.translate(
+                "SELECT id FROM ns.tbl WHERE (id > 0 AND id < 10) OR id = 99");
+        assertThat(select.filter()).isNotNull();
+        assertThat(select.filter().op()).isEqualTo(Expression.Operation.OR);
+    }
+
+    @Test
+    void selectWithStringLiteralFilter() {
+        QueryPlan.Select select = (QueryPlan.Select) translator.translate(
+                "SELECT id FROM ns.tbl WHERE region = 'us-east-1'");
+        assertThat(select.filter().op()).isEqualTo(Expression.Operation.EQ);
+    }
+
+    @Test
+    void selectWithFloatLiteralFilter() {
+        QueryPlan.Select select = (QueryPlan.Select) translator.translate(
+                "SELECT id FROM ns.tbl WHERE score >= 0.5");
+        assertThat(select.filter().op()).isEqualTo(Expression.Operation.GT_EQ);
+    }
+
+    @Test
+    void selectWithBooleanLiteralFilter() {
+        QueryPlan.Select select = (QueryPlan.Select) translator.translate(
+                "SELECT id FROM ns.tbl WHERE active = true");
+        assertThat(select.filter().op()).isEqualTo(Expression.Operation.EQ);
+    }
+
+    // ── LIMIT edge cases ──────────────────────────────────────────────────────
+
+    @Test
+    void limitZeroIsValid() {
+        QueryPlan.Select select = (QueryPlan.Select) translator.translate(
+                "SELECT * FROM ns.t LIMIT 0");
+        assertThat(select.limit()).hasValue(0L);
+    }
+
+    @Test
+    void selectWithLimitButNoFilter() {
+        QueryPlan.Select select = (QueryPlan.Select) translator.translate(
+                "SELECT id FROM ns.t LIMIT 5");
+        assertThat(select.filter()).isNull();
+        assertThat(select.limit()).hasValue(5L);
+    }
+
+    // ── Helper ───────────────────────────────────────────────────────────────
+
+    private Expression.Operation filterOp(String sql) {
+        return ((QueryPlan.Select) translator.translate(sql)).filter().op();
     }
 }
