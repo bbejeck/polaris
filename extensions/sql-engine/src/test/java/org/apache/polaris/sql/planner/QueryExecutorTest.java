@@ -20,6 +20,7 @@
 package org.apache.polaris.sql.planner;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -27,6 +28,7 @@ import static org.mockito.Mockito.when;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.OptionalLong;
 import org.apache.iceberg.DataFile;
 import org.apache.iceberg.FileScanTask;
 import org.apache.iceberg.PartitionSpec;
@@ -63,6 +65,15 @@ class QueryExecutorTest {
     void setUp() {
         executor = new QueryExecutor(catalog);
         lenient().when(catalog.loadTable(TABLE_ID)).thenReturn(table);
+    }
+
+    @Test
+    void selectPlanThrowsIllegalArgumentException() {
+        QueryPlan.Select selectPlan = new QueryPlan.Select(
+                NAMESPACED_TABLE, List.of(), null, OptionalLong.empty());
+        assertThatThrownBy(() -> executor.execute(selectPlan))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("SELECT");
     }
 
     @Test
@@ -126,7 +137,7 @@ class QueryExecutorTest {
     }
 
     @Test
-    void showPoliciesReturnsTableProperties() {
+    void showPoliciesReturnsPolicyPropertiesOnly() {
         Map<String, String> props = Map.of(
                 "write.format.default", "parquet",
                 "polaris.policy.retention", "30d");
@@ -134,7 +145,10 @@ class QueryExecutorTest {
 
         Object result = executor.execute(new QueryPlan.ShowPolicies(NAMESPACED_TABLE));
 
-        assertThat(result).isEqualTo(props);
+        @SuppressWarnings("unchecked")
+        Map<String, String> policies = (Map<String, String>) result;
+        assertThat(policies).containsOnlyKeys("polaris.policy.retention");
+        assertThat(policies).doesNotContainKey("write.format.default");
     }
 
     @Test

@@ -105,10 +105,10 @@ public class IcebergExpressionVisitor extends IcebergSQLBaseVisitor<Expression> 
                 String raw = stringCtx.getText();
                 return raw.substring(1, raw.length() - 1).replace("''", "'");
             }
-            case IcebergSQLParser.TrueLiteralContext trueLiteralContext -> {
+            case IcebergSQLParser.TrueLiteralContext tlc -> {
                 return true;
             }
-            case IcebergSQLParser.FalseLiteralContext falseLiteralContext -> {
+            case IcebergSQLParser.FalseLiteralContext flc -> {
                 return false;
             }
             default -> throw new IllegalArgumentException("Unknown literal type: " + ctx.getText());

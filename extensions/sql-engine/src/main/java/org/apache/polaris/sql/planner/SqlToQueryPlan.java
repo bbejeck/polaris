@@ -19,8 +19,11 @@
 
 package org.apache.polaris.sql.planner;
 
+import org.antlr.v4.runtime.BaseErrorListener;
 import org.antlr.v4.runtime.CharStreams;
 import org.antlr.v4.runtime.CommonTokenStream;
+import org.antlr.v4.runtime.RecognitionException;
+import org.antlr.v4.runtime.Recognizer;
 import org.apache.iceberg.expressions.Expression;
 import org.apache.polaris.sql.grammar.IcebergSQLLexer;
 import org.apache.polaris.sql.grammar.IcebergSQLParser;
@@ -35,10 +38,23 @@ import java.util.OptionalLong;
  */
 public class SqlToQueryPlan {
 
+    private static final BaseErrorListener THROWING_ERROR_LISTENER = new BaseErrorListener() {
+        @Override
+        public void syntaxError(Recognizer<?, ?> recognizer, Object offendingSymbol,
+                int line, int charPositionInLine, String msg, RecognitionException e) {
+            throw new IllegalArgumentException(
+                    "SQL syntax error at line " + line + ":" + charPositionInLine + " – " + msg);
+        }
+    };
+
     public QueryPlan translate(String sql) {
         var lexer = new IcebergSQLLexer(CharStreams.fromString(sql));
+        lexer.removeErrorListeners();
+        lexer.addErrorListener(THROWING_ERROR_LISTENER);
         var tokens = new CommonTokenStream(lexer);
         var parser = new IcebergSQLParser(tokens);
+        parser.removeErrorListeners();
+        parser.addErrorListener(THROWING_ERROR_LISTENER);
 
         IcebergSQLParser.QueryContext queryCtx = parser.query();
 

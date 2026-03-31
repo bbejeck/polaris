@@ -25,8 +25,10 @@ import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
 
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.StreamSupport;
 
 /**
  * Executes a {@link QueryPlan} against an Iceberg {@link Catalog}.
@@ -67,10 +69,7 @@ public class QueryExecutor {
     private Object describeStats(QueryPlan.DescribeStats plan) {
         Table table = loadTable(plan.namespacedTable());
         var currentSnapshot = table.currentSnapshot();
-        long snapshotCount = 0;
-        for (var ignored : table.snapshots()) {
-            snapshotCount++;
-        }
+        long snapshotCount = StreamSupport.stream(table.snapshots().spliterator(), false).count();
         return Map.of(
                 "snapshotCount", snapshotCount,
                 "currentSnapshotId", currentSnapshot != null ? currentSnapshot.snapshotId() : -1L,
@@ -85,36 +84,64 @@ public class QueryExecutor {
         return Map.of("location", table.location());
     }
 
-    // Use-case 4: effective policies via table properties
+    // Use-case 4: effective policies via table properties (polaris.policy.* prefix only)
+    private static final String POLICY_PREFIX = "polaris.policy.";
+
     private Object showPolicies(QueryPlan.ShowPolicies plan) {
         Table table = loadTable(plan.namespacedTable());
-        return table.properties();
+        Map<String, String> policies = new HashMap<>();
+        table.properties().forEach((k, v) -> {
+            if (k.startsWith(POLICY_PREFIX)) {
+                policies.put(k, v);
+            }
+        });
+        return policies;
     }
+
+    /**
+     * Files smaller than this threshold (128 MiB) are considered "small" by the diagnostics scan.
+     * This matches the default Iceberg target file size.
+     */
+    private static final long SMALL_FILE_THRESHOLD_BYTES = 128 * 1024 * 1024L;
 
     // Use-case 5: small-file diagnostics via manifest scanning
     private Object diagnose(QueryPlan.Diagnose plan) {
         Table table = loadTable(plan.namespacedTable());
-        long smallFileThresholdBytes = 128 * 1024 * 1024L;
         long smallFileCount = 0;
         if (table.currentSnapshot() != null) {
-            for (var fileScanTask : table.newScan().planFiles()) {
-                if (fileScanTask.file().fileSizeInBytes() < smallFileThresholdBytes) {
-                    smallFileCount++;
+            try (var tasks = table.newScan().planFiles()) {
+                for (var fileScanTask : tasks) {
+                    if (fileScanTask.file().fileSizeInBytes() < SMALL_FILE_THRESHOLD_BYTES) {
+                        smallFileCount++;
+                    }
                 }
+            } catch (java.io.IOException e) {
+                throw new RuntimeException("Failed to close file scan tasks during diagnose", e);
             }
         }
         return Map.of(
-                "smallFileThresholdBytes", smallFileThresholdBytes,
+                "smallFileThresholdBytes", SMALL_FILE_THRESHOLD_BYTES,
                 "smallFileCount", smallFileCount
         );
     }
 
+    /**
+     * Not supported: {@link QueryExecutor} handles metadata operations only.
+     * Use {@link IcebergRestQueryExecutor} to execute SELECT plans.
+     *
+     * @throws IllegalArgumentException always
+     */
     private Object executeSelect(QueryPlan.Select plan) {
-        throw new UnsupportedOperationException("SELECT execution not yet implemented");
+        throw new IllegalArgumentException(
+                "QueryExecutor does not support SELECT plans; use IcebergRestQueryExecutor");
     }
 
     private Table loadTable(String namespacedTable) {
         String[] parts = namespacedTable.split("\\.");
+        if (parts.length < 2) {
+            throw new IllegalArgumentException(
+                    "Table name must be namespace-qualified (e.g. 'ns.table'), got: " + namespacedTable);
+        }
         Namespace ns = Namespace.of(Arrays.copyOf(parts, parts.length - 1));
         return catalog.loadTable(TableIdentifier.of(ns, parts[parts.length - 1]));
     }

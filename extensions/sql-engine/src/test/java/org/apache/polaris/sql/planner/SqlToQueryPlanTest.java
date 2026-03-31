@@ -20,6 +20,7 @@
 package org.apache.polaris.sql.planner;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.apache.iceberg.expressions.Expression;
 import org.junit.jupiter.api.Test;
@@ -100,6 +101,18 @@ class SqlToQueryPlanTest {
 
         assertThat(plan).isInstanceOf(QueryPlan.ShowTables.class);
         assertThat(((QueryPlan.ShowTables) plan).namespace()).isEqualTo("catalog.schema.db");
+    }
+
+    @Test
+    void invalidSqlThrowsIllegalArgumentException() {
+        assertThatThrownBy(() -> translator.translate("NOT VALID SQL !!!"))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void syntaxErrorThrowsIllegalArgumentException() {
+        assertThatThrownBy(() -> translator.translate("SELECT FROM"))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test

@@ -127,7 +127,6 @@ OR       : O R ;
 NOT      : N O T ;
 IN       : I N ;
 IS       : I S ;
-AS       : A S ;
 NULL     : N U L L ;
 TRUE     : T R U E ;
 FALSE    : F A L S E ;

@@ -101,11 +101,12 @@ public class IcebergRestQueryExecutor implements AutoCloseable {
      */
     public CloseableIterable<Record> executeWithLimit(QueryPlan.Select plan) {
         CloseableIterable<Record> all = execute(plan);
-        if (plan.limit().isEmpty()) {
-            return all;
-        }
-        long limit = plan.limit().getAsLong();
-        return new CloseableIterable<>() {
+        try {
+            if (plan.limit().isEmpty()) {
+                return all;
+            }
+            long limit = plan.limit().getAsLong();
+            return new CloseableIterable<>() {
             @Override
             public CloseableIterator<Record> iterator() {
                 CloseableIterator<Record> delegate = all.iterator();
@@ -135,6 +136,14 @@ public class IcebergRestQueryExecutor implements AutoCloseable {
                 all.close();
             }
         };
+        } catch (Exception e) {
+            try {
+                all.close();
+            } catch (IOException closeEx) {
+                e.addSuppressed(closeEx);
+            }
+            throw e;
+        }
     }
 
     /** Exposes the underlying catalog for inspection or metadata operations. */
@@ -144,6 +153,10 @@ public class IcebergRestQueryExecutor implements AutoCloseable {
 
     private Table loadTable(String namespacedTable) {
         String[] parts = namespacedTable.split("\\.");
+        if (parts.length < 2) {
+            throw new IllegalArgumentException(
+                    "Table name must be namespace-qualified (e.g. 'ns.table'), got: " + namespacedTable);
+        }
         Namespace ns = Namespace.of(Arrays.copyOf(parts, parts.length - 1));
         return catalog.loadTable(TableIdentifier.of(ns, parts[parts.length - 1]));
     }
