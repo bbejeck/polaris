@@ -28,6 +28,8 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -256,11 +258,12 @@ class IcebergRestQueryExecutorIntegrationTest {
                 .send(req, HttpResponse.BodyHandlers.ofString());
         assertThat(resp.statusCode()).as("OAuth token response").isIn(200, 201);
 
-        // Simple parse: find "access_token":"<value>"
         String body2 = resp.body();
-        int start = body2.indexOf("\"access_token\":\"") + 16;
-        int end = body2.indexOf('"', start);
-        return body2.substring(start, end);
+        Matcher matcher = Pattern.compile("\"access_token\"\\s*:\\s*\"([^\"]+)\"").matcher(body2);
+        if (!matcher.find()) {
+            throw new IllegalStateException("No access_token in OAuth response: " + body2);
+        }
+        return matcher.group(1);
     }
 
     /**
