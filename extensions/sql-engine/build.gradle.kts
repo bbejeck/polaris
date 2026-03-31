@@ -18,10 +18,12 @@
  * under the License.
  */
 
+import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import org.gradle.api.tasks.compile.JavaCompile
 
 plugins {
     id("polaris-java")
+    id("com.gradleup.shadow")
 }
 
 // Isolated configuration: ANTLR 4 tool jar, does not leak into compile/runtime
@@ -84,4 +86,16 @@ dependencies {
     testImplementation("org.testcontainers:testcontainers-junit-jupiter")
 
     testImplementation(project(":polaris-minio-testcontainer"))
+}
+
+// ── Demo fat jar ──────────────────────────────────────────────────────────────
+// NOTE: when extracting this module to a standalone repo, replace id("polaris-java")
+// with id("java") and keep this shadow jar block unchanged.
+tasks.named<ShadowJar>("shadowJar") {
+    archiveClassifier.set("demo")
+    mergeServiceFiles()
+    isZip64 = true
+    manifest {
+        attributes("Main-Class" to "org.apache.polaris.sql.cli.PolarisShell")
+    }
 }
