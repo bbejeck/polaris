@@ -26,6 +26,7 @@ import org.apache.polaris.sql.planner.IcebergRestQueryExecutor;
 import org.apache.polaris.sql.planner.QueryExecutor;
 import org.apache.polaris.sql.planner.QueryPlan;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.OptionalLong;
@@ -44,7 +45,7 @@ class ResultPrinter {
      *
      * @param plan            the plan to execute
      * @param restExecutor    executor for SELECT plans (reads actual table data)
-     * @param catalogExecutor executor for metadata plans (SHOW, DESCRIBE, DIAGNOSE)
+     * @param catalogExecutor executor for metadata plans (SHOW, DESCRIBE, DIAGNOSE, EXPLAIN)
      * @param maxRows         display cap for SELECT results; ignored if the plan already has a LIMIT
      */
     static void print(QueryPlan plan,
@@ -53,6 +54,7 @@ class ResultPrinter {
                       int maxRows) throws Exception {
         switch (plan) {
             case QueryPlan.Select select -> printSelect(select, restExecutor, maxRows);
+            case QueryPlan.Explain ex   -> printExplain(ex, catalogExecutor);
             default                     -> printCatalogResult(catalogExecutor.execute(plan));
         }
     }
@@ -67,16 +69,70 @@ class ResultPrinter {
                         plan.namespacedTable(),
                         plan.projectedColumns(),
                         plan.filter(),
+                        plan.orderBy(),
                         OptionalLong.of(maxRows));
 
         int count = 0;
-        try (CloseableIterable<Record> records = executor.executeWithLimit(capped)) {
-            for (Record r : records) {
+        if (!plan.orderBy().isEmpty()) {
+            List<Record> rows = executor.executeOrdered(capped);
+            for (Record r : rows) {
                 System.out.println(formatRecord(r));
                 count++;
             }
+        } else {
+            try (CloseableIterable<Record> records = executor.executeWithLimit(capped)) {
+                for (Record r : records) {
+                    System.out.println(formatRecord(r));
+                    count++;
+                }
+            }
         }
         System.out.printf("(%d row%s)%n", count, count == 1 ? "" : "s");
+    }
+
+    private static void printExplain(QueryPlan.Explain plan, QueryExecutor catalogExecutor) {
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = (Map<String, Object>) catalogExecutor.execute(plan);
+
+        int width = 70;
+        String border = "─".repeat(width);
+        System.out.println("┌" + border + "┐");
+        System.out.printf("│  ICEBERG SCAN PLAN — %-49s│%n", result.get("table"));
+        System.out.println("├──────────────────────────────────────┬" + "─".repeat(32) + "┤");
+        printRow("Snapshot ID",             result.get("snapshotId"));
+        printRow("Snapshot timestamp (ms)", result.get("snapshotTimestampMs"));
+        printRow("Partition spec",          result.get("partitionSpec"));
+        printRow("Schema columns",          result.get("schemaColumnCount"));
+        printRow("Projected columns",       result.get("projectedColumnCount"));
+        System.out.println("├──────────────────────────────────────┬" + "─".repeat(32) + "┤");
+        long total = (long) result.get("totalDataFiles");
+        long after = (long) result.get("dataFilesAfterFilter");
+        double pct  = total > 0 ? 100.0 * (total - after) / total : 0.0;
+        printRow("Total manifest files",    result.get("totalManifestFiles"));
+        printRow("Manifests after pruning", result.get("manifestsAfterPruning"));
+        printRow("Data files total",        total);
+        printRow("Data files after filter", String.format("%d  (%.1f%% eliminated)", after, pct));
+        printRow("Estimated bytes scanned", formatBytes((long) result.get("estimatedBytes")));
+        printRow("Pushdown filter",         result.get("pushdownFilter"));
+        @SuppressWarnings("unchecked")
+        List<String> warnings = (List<String>) result.get("warnings");
+        if (!warnings.isEmpty()) {
+            System.out.println("├──────────────────────────────────────┴" + "─".repeat(32) + "┤");
+            System.out.println("│  ⚠ Warnings" + " ".repeat(width - 12) + "│");
+            for (String w : warnings) System.out.printf("│  • %-67s│%n", w);
+        }
+        System.out.println("└" + border + "┘");
+    }
+
+    private static void printRow(String label, Object value) {
+        System.out.printf("│  %-36s│  %-30s│%n", label, value);
+    }
+
+    private static String formatBytes(long bytes) {
+        if (bytes < 1024)            return bytes + " B";
+        if (bytes < 1024 * 1024)     return String.format("%.1f KiB", bytes / 1024.0);
+        if (bytes < 1024L*1024*1024) return String.format("%.1f MiB", bytes / (1024.0 * 1024));
+        return String.format("%.2f GiB", bytes / (1024.0 * 1024 * 1024));
     }
 
     private static void printCatalogResult(Object result) {

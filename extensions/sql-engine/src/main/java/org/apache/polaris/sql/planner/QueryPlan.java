@@ -27,7 +27,7 @@ import java.util.OptionalLong;
 /**
  * Sealed interface representing the output of SQL-to-plan translation.
  * Each permitted record type corresponds to one supported statement:
- * SELECT queries, SHOW TABLES, DESCRIBE STATS, SHOW LOCATION, SHOW POLICIES, and DIAGNOSE.
+ * SELECT queries, SHOW TABLES, DESCRIBE STATS, SHOW LOCATION, SHOW POLICIES, DIAGNOSE, and EXPLAIN.
  */
 public sealed interface QueryPlan
         permits QueryPlan.Select,
@@ -35,12 +35,16 @@ public sealed interface QueryPlan
                 QueryPlan.DescribeStats,
                 QueryPlan.ShowLocation,
                 QueryPlan.ShowPolicies,
-                QueryPlan.Diagnose {
+                QueryPlan.Diagnose,
+                QueryPlan.Explain {
+
+    record OrderByItem(String column, boolean ascending) {}
 
     record Select(
             String namespacedTable,
             List<String> projectedColumns,
             Expression filter,
+            List<OrderByItem> orderBy,
             OptionalLong limit
     ) implements QueryPlan {}
 
@@ -53,4 +57,6 @@ public sealed interface QueryPlan
     record ShowPolicies(String namespacedTable) implements QueryPlan {}
 
     record Diagnose(String namespacedTable) implements QueryPlan {}
+
+    record Explain(Select innerSelect) implements QueryPlan {}
 }

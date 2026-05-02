@@ -31,6 +31,7 @@ import java.util.Map;
 import java.util.OptionalLong;
 import org.apache.iceberg.DataFile;
 import org.apache.iceberg.FileScanTask;
+import org.apache.iceberg.ManifestFile;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.Snapshot;
@@ -40,6 +41,7 @@ import org.apache.iceberg.catalog.Catalog;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.io.CloseableIterable;
+import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.types.Types;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -70,7 +72,7 @@ class QueryExecutorTest {
     @Test
     void selectPlanThrowsIllegalArgumentException() {
         QueryPlan.Select selectPlan = new QueryPlan.Select(
-                NAMESPACED_TABLE, List.of(), null, OptionalLong.empty());
+                NAMESPACED_TABLE, List.of(), null, List.of(), OptionalLong.empty());
         assertThatThrownBy(() -> executor.execute(selectPlan))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("SELECT");
@@ -185,5 +187,56 @@ class QueryExecutorTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> map = (Map<String, Object>) result;
         assertThat(map).containsEntry("smallFileCount", 0L);
+    }
+
+    @Test
+    void explainReturnsDataFileStatsWithWarnings() {
+        long threshold = 128 * 1024 * 1024L;
+        long smallFileSize = 1024L;
+        long largeFileSize = threshold + 1;
+
+        DataFile smallFile = mock(DataFile.class);
+        DataFile largeFile = mock(DataFile.class);
+        FileScanTask smallTask = mock(FileScanTask.class);
+        FileScanTask largeTask = mock(FileScanTask.class);
+        ManifestFile manifest1 = mock(ManifestFile.class);
+        ManifestFile manifest2 = mock(ManifestFile.class);
+        FileIO fileIO = mock(FileIO.class);
+        Schema schema = new Schema(
+                Types.NestedField.required(1, "id", Types.IntegerType.get()));
+
+        when(table.currentSnapshot()).thenReturn(snapshot);
+        when(snapshot.snapshotId()).thenReturn(99L);
+        when(snapshot.timestampMillis()).thenReturn(1000L);
+        when(snapshot.dataManifests(fileIO)).thenReturn(List.of(manifest1, manifest2));
+        when(table.io()).thenReturn(fileIO);
+        when(table.newScan()).thenReturn(tableScan);
+        when(tableScan.planFiles()).thenReturn(CloseableIterable.withNoopClose(
+                List.of(smallTask, largeTask)));
+        when(smallTask.file()).thenReturn(smallFile);
+        when(largeTask.file()).thenReturn(largeFile);
+        when(smallFile.fileSizeInBytes()).thenReturn(smallFileSize);
+        when(largeFile.fileSizeInBytes()).thenReturn(largeFileSize);
+        when(smallFile.valueCounts()).thenReturn(Map.of(1, 10L));
+        when(largeFile.valueCounts()).thenReturn(Map.of(1, 100L));
+        when(table.spec()).thenReturn(PartitionSpec.unpartitioned());
+        when(table.schema()).thenReturn(schema);
+
+        QueryPlan.Select select = new QueryPlan.Select(
+                NAMESPACED_TABLE, List.of(), null, List.of(), OptionalLong.empty());
+        QueryPlan plan = new QueryPlan.Explain(select);
+
+        Object result = executor.execute(plan);
+
+        assertThat(result).isInstanceOf(Map.class);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> map = (Map<String, Object>) result;
+        assertThat(map).containsEntry("dataFilesAfterFilter", 2L);
+        assertThat(map).containsEntry("totalDataFiles", 2L);
+        assertThat(map).containsEntry("snapshotId", 99L);
+        @SuppressWarnings("unchecked")
+        List<String> warnings = (List<String>) map.get("warnings");
+        assertThat(warnings).isNotEmpty();
+        assertThat(warnings.get(0)).contains("128 MiB");
     }
 }

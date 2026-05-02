@@ -22,18 +22,20 @@ grammar IcebergSQL;
 // ─── Entry Point ─────────────────────────────────────────────────────────────
 
 query
-    : selectQuery   # selectStmt
-    | showTablesQuery # showTablesStmt
+    : selectQuery        # selectStmt
+    | showTablesQuery    # showTablesStmt
     | describeStatsQuery # describeStatsStmt
-    | showLocationQuery # showLocationStmt
-    | showPoliciesQuery # showPoliciesStmt
-    | diagnoseQuery # diagnoseStmt
+    | showLocationQuery  # showLocationStmt
+    | showPoliciesQuery  # showPoliciesStmt
+    | diagnoseQuery      # diagnoseStmt
+    | explainQuery       # explainStmt
     ;
 
 selectQuery
   : SELECT columnList
     FROM tableRef
     (WHERE predicate)?
+    (ORDER BY orderByList)?
     (LIMIT INTEGER_LITERAL)?
     EOF
   ;
@@ -58,9 +60,25 @@ diagnoseQuery
   : DIAGNOSE TABLE tableRef EOF
   ;
 
+explainQuery
+    : EXPLAIN selectQuery
+    ;
+
+// ─── ORDER BY ────────────────────────────────────────────────────────────────
+
+orderByList
+    : orderByItem (COMMA orderByItem)*
+    ;
+
+orderByItem
+    : identifier (ASC | DESC)?
+    ;
+
+// ─── Namespace / Table References ────────────────────────────────────────────
+
 namespaceRef
-  : ID (DOT ID)*
-  ;
+    : identifier (DOT identifier)*
+    ;
 
 // ─── Column Projection ───────────────────────────────────────────────────────
 
@@ -70,7 +88,7 @@ columnList
     ;
 
 column
-    : ID (DOT ID)?                      # simpleColumn    // e.g.  region  or  t.region
+    : identifier (DOT identifier)?      # simpleColumn    // e.g.  region  or  t.region
     ;
 
 // ─── Table Reference ─────────────────────────────────────────────────────────
@@ -78,7 +96,14 @@ column
 // Supports unqualified (events), single-namespace (logs.events),
 // or multi-level namespace (prod.logs.events)
 tableRef
-    : ID (DOT ID)*
+    : identifier (DOT identifier)*
+    ;
+
+// ─── Identifier (bare or backtick-quoted) ────────────────────────────────────
+
+identifier
+    : ID
+    | QUOTED_ID
     ;
 
 // ─── Predicates ──────────────────────────────────────────────────────────────
@@ -100,7 +125,7 @@ predicate
 
 // An expression in a comparison is always a column reference or a literal
 expression
-    : ID                                # columnRef
+    : identifier                        # columnRef
     | literal                           # literalExpr
     ;
 
@@ -122,6 +147,10 @@ SELECT   : S E L E C T ;
 FROM     : F R O M ;
 WHERE    : W H E R E ;
 LIMIT    : L I M I T ;
+ORDER    : O R D E R ;
+BY       : B Y ;
+ASC      : A S C ;
+DESC     : D E S C ;
 AND      : A N D ;
 OR       : O R ;
 NOT      : N O T ;
@@ -138,6 +167,7 @@ STATS    : S T A T S ;
 LOCATION : L O C A T I O N ;
 POLICIES : P O L I C I E S ;
 DIAGNOSE : D I A G N O S E ;
+EXPLAIN  : E X P L A I N ;
 
 // ─── Operators & Punctuation ─────────────────────────────────────────────────
 
@@ -157,6 +187,10 @@ RPAREN  : ')' ;
 
 ID
     : [a-zA-Z_] [a-zA-Z_0-9]*
+    ;
+
+QUOTED_ID
+    : '`' ( ~'`' )+ '`'
     ;
 
 INTEGER_LITERAL

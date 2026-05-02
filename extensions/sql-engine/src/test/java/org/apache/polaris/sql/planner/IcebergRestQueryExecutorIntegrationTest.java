@@ -241,6 +241,24 @@ class IcebergRestQueryExecutorIntegrationTest {
         assertThat((String) map.get("location")).startsWith("s3://");
     }
 
+    // ── EXPLAIN via QueryExecutor ─────────────────────────────────────────────
+
+    @Test
+    void explainSelectShowsDataFileStats() {
+        SqlToQueryPlan translator = new SqlToQueryPlan();
+        QueryPlan plan = translator.translate(
+            "EXPLAIN SELECT * FROM " + NAMESPACE + "." + TABLE_NAME + " WHERE value > 50");
+
+        QueryExecutor executor = new QueryExecutor(restCatalog);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = (Map<String, Object>) executor.execute(plan);
+
+        assertThat(result).containsKey("snapshotId");
+        assertThat((long) result.get("totalDataFiles")).isGreaterThanOrEqualTo(1L);
+        assertThat((long) result.get("dataFilesAfterFilter")).isGreaterThanOrEqualTo(0L);
+        assertThat(result.get("warnings")).isInstanceOf(List.class);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     /** POST to Polaris /oauth/tokens and extract the access_token value. */

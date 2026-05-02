@@ -25,6 +25,7 @@ import org.apache.polaris.sql.planner.QueryPlan;
 import org.apache.polaris.sql.planner.SqlToQueryPlan;
 
 import java.io.FileInputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
@@ -103,7 +104,7 @@ public class PolarisShell {
         // 4. Start REPL
         var translator = new SqlToQueryPlan();
         try (var restExecutor  = new IcebergRestQueryExecutor(uri, warehouse, token, extraProps);
-             var scanner       = new Scanner(System.in)) {
+             var scanner       = new Scanner(System.in, StandardCharsets.UTF_8)) {
 
             var catalogExecutor = new QueryExecutor(restExecutor.getCatalog());
 

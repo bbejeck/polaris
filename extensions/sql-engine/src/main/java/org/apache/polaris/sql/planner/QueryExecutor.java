@@ -19,13 +19,20 @@
 
 package org.apache.polaris.sql.planner;
 
+import org.apache.iceberg.FileScanTask;
+import org.apache.iceberg.Snapshot;
 import org.apache.iceberg.Table;
+import org.apache.iceberg.TableScan;
 import org.apache.iceberg.catalog.Catalog;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
+import org.apache.iceberg.io.CloseableIterable;
 
+import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.StreamSupport;
@@ -51,6 +58,7 @@ public class QueryExecutor {
             case QueryPlan.ShowLocation sl  -> showLocation(sl);
             case QueryPlan.ShowPolicies sp  -> showPolicies(sp);
             case QueryPlan.Diagnose diag    -> diagnose(diag);
+            case QueryPlan.Explain ex       -> explainSelect(ex.innerSelect());
         };
     }
 
@@ -123,6 +131,76 @@ public class QueryExecutor {
                 "smallFileThresholdBytes", SMALL_FILE_THRESHOLD_BYTES,
                 "smallFileCount", smallFileCount
         );
+    }
+
+    // Use-case 6: EXPLAIN — scan plan introspection
+    private Object explainSelect(QueryPlan.Select plan) {
+        Table table = loadTable(plan.namespacedTable());
+        Snapshot currentSnapshot = table.currentSnapshot();
+
+        long totalManifestFiles = 0;
+        long totalDataFiles = 0;
+        long dataFilesAfterFilter = 0;
+        long manifestsAfterPruning = 0;
+        long estimatedBytes = 0;
+        long smallFileCount = 0;
+        long noStatsCount = 0;
+        List<String> warnings = new ArrayList<>();
+
+        if (currentSnapshot != null) {
+            totalManifestFiles = currentSnapshot.dataManifests(table.io()).size();
+
+            // Count total data files (unfiltered)
+            try (CloseableIterable<FileScanTask> allTasks = table.newScan().planFiles()) {
+                for (FileScanTask ignored : allTasks) totalDataFiles++;
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to count total files during EXPLAIN", e);
+            }
+
+            // Apply user filter — Iceberg performs partition pruning here
+            TableScan scan = table.newScan();
+            if (plan.filter() != null) scan = scan.filter(plan.filter());
+            if (!plan.projectedColumns().isEmpty()) scan = scan.select(plan.projectedColumns());
+
+            try (CloseableIterable<FileScanTask> tasks = scan.planFiles()) {
+                for (FileScanTask task : tasks) {
+                    dataFilesAfterFilter++;
+                    estimatedBytes += task.file().fileSizeInBytes();
+                    if (task.file().fileSizeInBytes() < SMALL_FILE_THRESHOLD_BYTES) smallFileCount++;
+                    if (task.file().valueCounts() == null || task.file().valueCounts().isEmpty()) noStatsCount++;
+                }
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to plan files during EXPLAIN", e);
+            }
+
+            // Approximate manifests after pruning by the same ratio as files
+            manifestsAfterPruning = totalDataFiles > 0
+                ? Math.max(1, (long) Math.ceil(totalManifestFiles * (double) dataFilesAfterFilter / totalDataFiles))
+                : 0;
+
+            if (smallFileCount > 0)
+                warnings.add(smallFileCount + " of " + dataFilesAfterFilter + " files are below 128 MiB — consider compaction");
+            if (noStatsCount > 0)
+                warnings.add(noStatsCount + " data files have no column statistics");
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("table",                plan.namespacedTable());
+        result.put("snapshotId",           currentSnapshot != null ? currentSnapshot.snapshotId() : -1L);
+        result.put("snapshotTimestampMs",  currentSnapshot != null ? currentSnapshot.timestampMillis() : -1L);
+        result.put("partitionSpec",        table.spec().toString());
+        result.put("schemaColumnCount",    table.schema().columns().size());
+        result.put("projectedColumnCount", plan.projectedColumns().isEmpty()
+                                           ? table.schema().columns().size()
+                                           : plan.projectedColumns().size());
+        result.put("totalManifestFiles",   totalManifestFiles);
+        result.put("manifestsAfterPruning", manifestsAfterPruning);
+        result.put("totalDataFiles",       totalDataFiles);
+        result.put("dataFilesAfterFilter", dataFilesAfterFilter);
+        result.put("estimatedBytes",       estimatedBytes);
+        result.put("pushdownFilter",       plan.filter() != null ? plan.filter().toString() : "none");
+        result.put("warnings",             warnings);
+        return result;
     }
 
     /**

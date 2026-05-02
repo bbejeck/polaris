@@ -30,8 +30,11 @@ import org.apache.iceberg.io.CloseableIterator;
 import org.apache.iceberg.rest.RESTCatalog;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -144,6 +147,38 @@ public class IcebergRestQueryExecutor implements AutoCloseable {
             }
             throw e;
         }
+    }
+
+    /**
+     * Executes the SELECT plan, applies ORDER BY sorting in-memory, and returns at most
+     * {@code limit} records. If the plan has no ORDER BY clause, rows are returned in
+     * scan order. If the plan has no LIMIT clause, all matching records are returned.
+     */
+    public List<Record> executeOrdered(QueryPlan.Select plan) throws IOException {
+        List<Record> rows = new ArrayList<>();
+        try (CloseableIterable<Record> all = execute(plan)) {
+            for (Record r : all) rows.add(r);
+        }
+        if (!plan.orderBy().isEmpty()) {
+            rows.sort(buildComparator(plan.orderBy()));
+        }
+        if (plan.limit().isPresent()) {
+            return rows.subList(0, (int) Math.min(rows.size(), plan.limit().getAsLong()));
+        }
+        return rows;
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private Comparator<Record> buildComparator(List<QueryPlan.OrderByItem> orderBy) {
+        Comparator<Record> comp = null;
+        for (QueryPlan.OrderByItem item : orderBy) {
+            Comparator<Record> c = Comparator.comparing(
+                r -> (Comparable) r.getField(item.column()),
+                Comparator.nullsLast(Comparator.naturalOrder()));
+            if (!item.ascending()) c = c.reversed();
+            comp = comp == null ? c : comp.thenComparing(c);
+        }
+        return comp;
     }
 
     /** Exposes the underlying catalog for inspection or metadata operations. */

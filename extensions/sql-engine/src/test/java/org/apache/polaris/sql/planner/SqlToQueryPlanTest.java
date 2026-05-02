@@ -38,6 +38,7 @@ class SqlToQueryPlanTest {
         assertThat(select.namespacedTable()).isEqualTo("prod.events");
         assertThat(select.projectedColumns()).isEmpty();
         assertThat(select.filter()).isNull();
+        assertThat(select.orderBy()).isEmpty();
         assertThat(select.limit()).isEmpty();
     }
 
@@ -52,6 +53,7 @@ class SqlToQueryPlanTest {
         assertThat(select.projectedColumns()).containsExactly("region", "sales");
         assertThat(select.filter()).isNotNull();
         assertThat(select.filter().op()).isEqualTo(Expression.Operation.GT);
+        assertThat(select.orderBy()).isEmpty();
         assertThat(select.limit()).hasValue(50L);
     }
 
@@ -227,6 +229,71 @@ class SqlToQueryPlanTest {
                 "SELECT id FROM ns.t LIMIT 5");
         assertThat(select.filter()).isNull();
         assertThat(select.limit()).hasValue(5L);
+    }
+
+    // ── EXPLAIN ──────────────────────────────────────────────────────────────
+
+    @Test
+    void explainSelectProducesExplainPlan() {
+        QueryPlan plan = translator.translate("EXPLAIN SELECT * FROM ns.t");
+
+        assertThat(plan).isInstanceOf(QueryPlan.Explain.class);
+        QueryPlan.Explain explain = (QueryPlan.Explain) plan;
+        assertThat(explain.innerSelect().namespacedTable()).isEqualTo("ns.t");
+    }
+
+    // ── ORDER BY ─────────────────────────────────────────────────────────────
+
+    @Test
+    void selectWithOrderByAsc() {
+        QueryPlan.Select select = (QueryPlan.Select) translator.translate(
+                "SELECT * FROM ns.t ORDER BY col");
+
+        assertThat(select.orderBy()).hasSize(1);
+        assertThat(select.orderBy().get(0).column()).isEqualTo("col");
+        assertThat(select.orderBy().get(0).ascending()).isTrue();
+    }
+
+    @Test
+    void selectWithOrderByDesc() {
+        QueryPlan.Select select = (QueryPlan.Select) translator.translate(
+                "SELECT * FROM ns.t ORDER BY col DESC");
+
+        assertThat(select.orderBy()).hasSize(1);
+        assertThat(select.orderBy().get(0).column()).isEqualTo("col");
+        assertThat(select.orderBy().get(0).ascending()).isFalse();
+    }
+
+    @Test
+    void selectWithMultiColumnOrderBy() {
+        QueryPlan.Select select = (QueryPlan.Select) translator.translate(
+                "SELECT * FROM ns.t ORDER BY a ASC, b DESC");
+
+        assertThat(select.orderBy()).hasSize(2);
+        assertThat(select.orderBy().get(0).column()).isEqualTo("a");
+        assertThat(select.orderBy().get(0).ascending()).isTrue();
+        assertThat(select.orderBy().get(1).column()).isEqualTo("b");
+        assertThat(select.orderBy().get(1).ascending()).isFalse();
+    }
+
+    // ── Backtick identifiers ──────────────────────────────────────────────────
+
+    @Test
+    void backtickTableRef() {
+        QueryPlan plan = translator.translate("SELECT * FROM `my-ns`.`my-table`");
+
+        assertThat(plan).isInstanceOf(QueryPlan.Select.class);
+        QueryPlan.Select select = (QueryPlan.Select) plan;
+        assertThat(select.namespacedTable()).isEqualTo("my-ns.my-table");
+    }
+
+    @Test
+    void backtickColumnInWhere() {
+        QueryPlan.Select select = (QueryPlan.Select) translator.translate(
+                "SELECT * FROM ns.tbl WHERE `event-type` = 'click'");
+
+        assertThat(select.filter()).isNotNull();
+        assertThat(select.filter().op()).isEqualTo(Expression.Operation.EQ);
     }
 
     // ── Helper ───────────────────────────────────────────────────────────────

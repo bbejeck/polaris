@@ -29,8 +29,8 @@ plugins {
 // Isolated configuration: ANTLR 4 tool jar, does not leak into compile/runtime
 val antlrTool: Configuration by configurations.creating
 
-val antlrOutputDir = layout.buildDirectory.dir("generated-src/antlr/main")
-val antlrPackageDir = layout.buildDirectory.dir("generated-src/antlr/main/org/apache/polaris/sql/grammar")
+val antlrOutputDir = layout.buildDirectory.dir("generated/antlr/main")
+val antlrPackageDir = layout.buildDirectory.dir("generated/antlr/main/org/apache/polaris/sql/grammar")
 val grammarFile    = file("src/main/antlr/IcebergSQL.g4")
 
 val generateGrammarSource by tasks.registering(JavaExec::class) {
@@ -69,6 +69,8 @@ dependencies {
     implementation("org.apache.iceberg:iceberg-core")
     implementation("org.apache.iceberg:iceberg-data")
     implementation("org.apache.iceberg:iceberg-parquet")
+    implementation("org.apache.iceberg:iceberg-aws")
+    implementation("org.apache.parquet:parquet-column:1.16.0")
 
     implementation(project(":polaris-core"))
     implementation(libs.guava)

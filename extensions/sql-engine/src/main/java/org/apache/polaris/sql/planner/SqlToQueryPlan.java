@@ -31,6 +31,7 @@ import org.apache.polaris.sql.grammar.IcebergSQLParser;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.OptionalLong;
+import java.util.stream.Collectors;
 
 /**
  * Translates a SQL string into a {@link QueryPlan} by parsing it with the IcebergSQL ANTLR grammar
@@ -62,26 +63,35 @@ public class SqlToQueryPlan {
             case IcebergSQLParser.SelectStmtContext ctx ->
                     translateSelect(ctx.selectQuery());
             case IcebergSQLParser.ShowTablesStmtContext ctx ->
-                    new QueryPlan.ShowTables(ctx.showTablesQuery().namespaceRef().getText());
+                    new QueryPlan.ShowTables(
+                        identifiersToString(ctx.showTablesQuery().namespaceRef().identifier()));
             case IcebergSQLParser.DescribeStatsStmtContext ctx ->
-                    new QueryPlan.DescribeStats(ctx.describeStatsQuery().tableRef().getText());
+                    new QueryPlan.DescribeStats(
+                        identifiersToString(ctx.describeStatsQuery().tableRef().identifier()));
             case IcebergSQLParser.ShowLocationStmtContext ctx ->
-                    new QueryPlan.ShowLocation(ctx.showLocationQuery().tableRef().getText());
+                    new QueryPlan.ShowLocation(
+                        identifiersToString(ctx.showLocationQuery().tableRef().identifier()));
             case IcebergSQLParser.ShowPoliciesStmtContext ctx ->
-                    new QueryPlan.ShowPolicies(ctx.showPoliciesQuery().tableRef().getText());
+                    new QueryPlan.ShowPolicies(
+                        identifiersToString(ctx.showPoliciesQuery().tableRef().identifier()));
             case IcebergSQLParser.DiagnoseStmtContext ctx ->
-                    new QueryPlan.Diagnose(ctx.diagnoseQuery().tableRef().getText());
+                    new QueryPlan.Diagnose(
+                        identifiersToString(ctx.diagnoseQuery().tableRef().identifier()));
+            case IcebergSQLParser.ExplainStmtContext ctx ->
+                    new QueryPlan.Explain(translateSelect(ctx.explainQuery().selectQuery()));
             default -> throw new IllegalArgumentException("Unrecognized statement: " + sql);
         };
     }
 
     private QueryPlan.Select translateSelect(IcebergSQLParser.SelectQueryContext ctx) {
-        String table = ctx.tableRef().getText();
+        String table = identifiersToString(ctx.tableRef().identifier());
 
         List<String> columns = new ArrayList<>();
         if (ctx.columnList() instanceof IcebergSQLParser.NamedColumnsContext columnListCtx) {
-            columns = new ArrayList<>(columnListCtx.column().stream()
-                    .map(IcebergSQLParser.ColumnContext::getText).toList());
+            columns = columnListCtx.column().stream()
+                    .map(col -> (IcebergSQLParser.SimpleColumnContext) col)
+                    .map(col -> identifiersToString(col.identifier()))
+                    .collect(Collectors.toCollection(ArrayList::new));
         }
 
         Expression filter = null;
@@ -89,11 +99,26 @@ public class SqlToQueryPlan {
             filter = new IcebergExpressionVisitor().visit(ctx.predicate());
         }
 
+        List<QueryPlan.OrderByItem> orderBy = new ArrayList<>();
+        if (ctx.orderByList() != null) {
+            for (var item : ctx.orderByList().orderByItem()) {
+                boolean asc = item.DESC() == null;
+                orderBy.add(new QueryPlan.OrderByItem(
+                    SqlUtil.unquote(item.identifier().getText()), asc));
+            }
+        }
+
         OptionalLong limit = OptionalLong.empty();
         if (ctx.INTEGER_LITERAL() != null) {
             limit = OptionalLong.of(Long.parseLong(ctx.INTEGER_LITERAL().getText()));
         }
 
-        return new QueryPlan.Select(table, columns, filter, limit);
+        return new QueryPlan.Select(table, columns, filter, orderBy, limit);
+    }
+
+    private static String identifiersToString(List<IcebergSQLParser.IdentifierContext> identifiers) {
+        return identifiers.stream()
+                .map(id -> SqlUtil.unquote(id.getText()))
+                .collect(Collectors.joining("."));
     }
 }

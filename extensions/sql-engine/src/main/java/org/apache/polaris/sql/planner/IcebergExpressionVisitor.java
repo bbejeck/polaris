@@ -47,21 +47,21 @@ public class IcebergExpressionVisitor extends IcebergSQLBaseVisitor<Expression> 
 
     @Override
     public Expression visitInPred(IcebergSQLParser.InPredContext ctx) {
-        String col = ctx.expression().getText();
+        String col = SqlUtil.unquote(ctx.expression().getText());
         List<Object> values = ctx.literal().stream().map(this::parseLiteral).toList();
         return Expressions.in(col, values);
     }
 
     @Override
     public Expression visitNotInPred(IcebergSQLParser.NotInPredContext ctx) {
-        String col = ctx.expression().getText();
+        String col = SqlUtil.unquote(ctx.expression().getText());
         List<Object> values = ctx.literal().stream().map(this::parseLiteral).toList();
         return Expressions.notIn(col, values);
     }
 
     @Override
     public Expression visitIsNullPred(IcebergSQLParser.IsNullPredContext ctx) {
-        String col = ctx.expression().getText();
+        String col = SqlUtil.unquote(ctx.expression().getText());
         boolean notNull = ctx.NOT() != null;
         return notNull ? Expressions.notNull(col) : Expressions.isNull(col);
     }
@@ -73,7 +73,7 @@ public class IcebergExpressionVisitor extends IcebergSQLBaseVisitor<Expression> 
 
     @Override
     public Expression visitComparisonPred(IcebergSQLParser.ComparisonPredContext ctx) {
-        String col = ctx.expression(0).getText();
+        String col = SqlUtil.unquote(ctx.expression(0).getText());
         Object value = parseLiteralExp(ctx.expression(1));
         return switch(ctx.op().getText()) {
             case "<" -> Expressions.lessThan(col, value);
