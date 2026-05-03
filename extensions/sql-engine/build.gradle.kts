@@ -75,13 +75,14 @@ dependencies {
     implementation(project(":polaris-core"))
     implementation(libs.guava)
     implementation(libs.slf4j.api)
+    runtimeOnly("org.slf4j:slf4j-simple:2.0.17")
 
     testImplementation(libs.mockito.junit.jupiter)
 
     testImplementation("org.apache.iceberg:iceberg-aws")
     testImplementation("org.apache.parquet:parquet-column:1.16.0")
-    testImplementation(libs.hadoop.common)
-    testImplementation(libs.hadoop.client.runtime)
+    implementation(libs.hadoop.common)
+    implementation(libs.hadoop.client.runtime)
 
     testImplementation(platform(libs.testcontainers.bom))
     testImplementation("org.testcontainers:testcontainers")
@@ -100,4 +101,9 @@ tasks.named<ShadowJar>("shadowJar") {
     manifest {
         attributes("Main-Class" to "org.apache.polaris.sql.cli.PolarisShell")
     }
+    // Exclude SLF4J 1.7.x bindings that leak in from Hadoop transitive deps;
+    // we ship slf4j-simple 2.x as the provider instead.
+    exclude("org/slf4j/impl/StaticLoggerBinder.class")
+    exclude("org/slf4j/impl/StaticMDCBinder.class")
+    exclude("org/slf4j/impl/StaticMarkerBinder.class")
 }

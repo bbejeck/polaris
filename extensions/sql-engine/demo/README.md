@@ -5,9 +5,17 @@ No AWS account or external Polaris server required. Everything runs locally via 
 ## Prerequisites
 - Docker + Docker Compose
 - Java 21+
-- The demo fat jar built with `./gradlew :extensions:sql-engine:shadowJar`
 
 ## Steps
+
+0. **Generate ANTLR grammar and build the fat jar** (from the repository root)
+   ```bash
+   ./gradlew :polaris-sql-engine:generateGrammarSource :polaris-sql-engine:shadowJar
+   ```
+   Then change into this directory:
+   ```bash
+   cd extensions/sql-engine/demo
+   ```
 
 1. **Start the environment**
    ```bash

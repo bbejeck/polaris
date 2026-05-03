@@ -22,6 +22,7 @@ package org.apache.polaris.sql.cli;
 import org.apache.iceberg.DataFile;
 import org.apache.iceberg.DataFiles;
 import org.apache.iceberg.FileFormat;
+import org.apache.iceberg.PartitionKey;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.Table;
@@ -84,15 +85,18 @@ public class DemoDataSeeder {
         String polarisUri    = props.getProperty("polaris.uri");
         String clientId      = props.getProperty("polaris.client.id");
         String clientSecret  = props.getProperty("polaris.client.secret");
-        String s3Endpoint    = props.getProperty("s3.endpoint", MINIO_ENDPOINT);
-        String accessKey     = props.getProperty("s3.access-key-id");
-        String secretKey     = props.getProperty("s3.secret-access-key");
+        String s3Endpoint         = props.getProperty("s3.endpoint", MINIO_ENDPOINT);
+        // Polaris runs inside Docker, so it must reach MinIO via the Docker-internal hostname.
+        // Falls back to s3.endpoint if not set (e.g. non-Docker deployments).
+        String s3InternalEndpoint = props.getProperty("s3.internal-endpoint", s3Endpoint);
+        String accessKey          = props.getProperty("s3.access-key-id");
+        String secretKey          = props.getProperty("s3.secret-access-key");
 
         System.out.println("Connecting to Polaris at " + polarisUri + " ...");
         String token = obtainToken(polarisUri, clientId, clientSecret);
         System.out.println("Authenticated.");
 
-        createCatalogIfAbsent(polarisUri, token, accessKey, secretKey, s3Endpoint);
+        createCatalogIfAbsent(polarisUri, token, accessKey, secretKey, s3Endpoint, s3InternalEndpoint);
 
         // Build RESTCatalog
         Map<String, String> catalogProps = new HashMap<>();
@@ -250,13 +254,20 @@ public class DemoDataSeeder {
         appender.addAll(records);
         appender.close();
 
-        DataFile dataFile = DataFiles.builder(spec)
+        DataFiles.Builder fileBuilder = DataFiles.builder(spec)
             .withPath(location)
             .withFileSizeInBytes(fileIO.newInputFile(location).getLength())
             .withMetrics(appender.metrics())
             .withFormat(FileFormat.PARQUET)
-            .withRecordCount(records.size())
-            .build();
+            .withRecordCount(records.size());
+
+        if (spec.isPartitioned()) {
+            PartitionKey key = new PartitionKey(spec, schema);
+            key.partition(records.get(0));
+            fileBuilder = fileBuilder.withPartition(key);
+        }
+
+        DataFile dataFile = fileBuilder.build();
 
         table.newAppend().appendFile(dataFile).commit();
     }
@@ -270,7 +281,8 @@ public class DemoDataSeeder {
 
     private static void createCatalogIfAbsent(
             String polarisUri, String token,
-            String accessKey, String secretKey, String s3Endpoint) throws Exception {
+            String accessKey, String secretKey,
+            String s3Endpoint, String s3InternalEndpoint) throws Exception {
         String json = String.format("""
             {
               "catalog": {
@@ -287,11 +299,14 @@ public class DemoDataSeeder {
                   "storageType": "S3",
                   "allowedLocations": ["s3://%s"],
                   "roleArn": "arn:aws:iam::000000000000:role/demo",
-                  "endpoint": "%s"
+                  "endpoint": "%s",
+                  "endpointInternal": "%s",
+                  "pathStyleAccess": true,
+                  "stsUnavailable": true
                 }
               }
             }
-            """, CATALOG, BUCKET, s3Endpoint, accessKey, secretKey, BUCKET, s3Endpoint);
+            """, CATALOG, BUCKET, s3Endpoint, accessKey, secretKey, BUCKET, s3Endpoint, s3InternalEndpoint);
 
         HttpRequest req = HttpRequest.newBuilder()
             .uri(URI.create(polarisUri.replace("/api/catalog", "") + "/api/management/v1/catalogs"))
